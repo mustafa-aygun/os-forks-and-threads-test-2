@@ -10,6 +10,15 @@
 #include <pthread.h>
 
 int **matrix;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock2 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock3 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock4 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock5 = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t condition = PTHREAD_COND_INITIALIZER;
+pthread_cond_t condition1 = PTHREAD_COND_INITIALIZER;
+int shiftedLeft = 0;
+int shiftedUp = 0;
 
 struct myThread{
   pthread_t t_id;
@@ -17,6 +26,7 @@ struct myThread{
   int t_work;
   int t_prev_work;
   int m;
+  int s;
 };
 
 void createInputTxt(int);
@@ -52,6 +62,7 @@ int main(int argc, char const *argv[]){
     threads[i] = malloc(sizeof(struct myThread));
     threads[i]->t_num = i+1;
     threads[i]->m = m;
+    threads[i]->s = s;
   }
   splitWork(threads,d,m);
 
@@ -142,13 +153,46 @@ void* runner(void *p){
 
   int i,j;
   struct myThread *t = (struct myThread*) p;
-  printf("Hello from %d\n",t->t_num);
- 
-  for(i = 0; i < t->t_work; i++){
-      shiftRight(t->m,(t->t_prev_work+i));
+  for(j = 0; j < t->s; j++){
+    printf("1-Hi from %d with shifted %d\n",t->t_num,shiftedLeft);
+    if(j != 0){
+      if(shiftedUp == t->m){
+        pthread_mutex_lock(&lock4);
+        pthread_cond_wait(&condition1,&lock4);
+        pthread_mutex_unlock(&lock4);
+      }
+      else{
+        shiftedUp = 0;
+        pthread_cond_broadcast(&condition1);
+      }
+    }
+    for(i = 0; i < t->t_work; i++){
+        shiftRight(t->m,(t->t_prev_work+i));
+    }
+    
+    
+    pthread_mutex_lock(&lock);
+      shiftedLeft += t->t_work;
+    pthread_mutex_unlock(&lock);
+    if(shiftedLeft != t->m){
+      printf("4-Hi from %d with shifted %d\n",t->t_num,shiftedLeft);
+      pthread_mutex_lock(&lock3);
+      pthread_cond_wait(&condition,&lock3);
+      pthread_mutex_unlock(&lock3);
+
+    }
+    else{
+      shiftedLeft = 0;
+      pthread_cond_broadcast(&condition);
+    }
+    for(i = 0; i < t->t_work; i++){
+        shiftUp(t->m,(t->t_prev_work+i));
+    }
+    
+    pthread_mutex_lock(&lock2);
+      shiftedUp += t->t_work;
+    pthread_mutex_unlock(&lock2);
   }
-  printMatrix(t->m);
-  
 }
 
 void splitWork(struct myThread **threads,int d, int m){
