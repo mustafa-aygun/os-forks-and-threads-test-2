@@ -24,6 +24,7 @@ struct myPhilosophers{
   int p_num;
   int p_state;
   int p_numEats;
+  double p_hungryTime;
   int d;
 };
 
@@ -66,6 +67,7 @@ int main(int argc, char const *argv[]){
     myPhilosophers[i]->p_num = i;
     myPhilosophers[i]->p_numEats = 0;
     myPhilosophers[i]->p_state = 0;
+    myPhilosophers[i]->p_hungryTime = 0;
   }
 
   for(i = 0; i < d; i++){
@@ -76,6 +78,10 @@ int main(int argc, char const *argv[]){
   }
  
   printf("-------------------------\n");
+  for(i = 0; i < d; i++){
+    printf("Philosopher %d eat %d times and he stayed %lf seconds hungry\n",
+      myPhilosophers[i]->p_num,myPhilosophers[i]->p_numEats,myPhilosophers[i]->p_hungryTime);
+  }
   return 0;
 }
 
@@ -83,40 +89,45 @@ int main(int argc, char const *argv[]){
 
 void* runner(void *p){
 
+  clock_t afterHungry, beforeEating;
   int i = 0;
   struct threads *t = (struct threads*) p;
-  sleep(rand()%5+1);
-  printf("Hi from thread %d\n",t->t_num);
   for(i = 0; i < 2; i++){
     myPhilosophers[t->t_num]->p_state = 1;
+    afterHungry = clock();
     while(1){
-        //printf("Here %d\n", t->t_num);
+
         pthread_mutex_lock(&lock);
       if(test(t->t_num,t->d) && boxFork > 0){
         
           boxFork--;
+          if(boxFork == 1){
+            printf("Only one fork left at box!\n");
+          }
         pthread_mutex_unlock(&lock);
-        printf("I am eating: %d\n", t->t_num);
+        printf("Philosophers %d is eating\n", t->t_num);
         myPhilosophers[t->t_num]->p_state = 2;
+        beforeEating = clock();
+        myPhilosophers[t->t_num]->p_hungryTime += (double)(beforeEating - afterHungry) / CLOCKS_PER_SEC ;
         sleep(rand()%5+1);
-        pthread_mutex_lock(&lock3);
+        
+        pthread_mutex_lock(&lock);
           boxFork++;
-        pthread_mutex_unlock(&lock3);
+        pthread_mutex_unlock(&lock);
         myPhilosophers[t->t_num]->p_numEats++;
         break;
       }
       else{
         pthread_mutex_unlock(&lock);
-        /*printf("Waiting here: %d\n",t->t_num);
         pthread_mutex_lock(&lock2);
         pthread_cond_wait(&condition,&lock2);
-        pthread_mutex_lock(&lock2);*/
+        pthread_mutex_unlock(&lock2);
     }
     }
 
     myPhilosophers[t->t_num]->p_state = 0;
     pthread_cond_broadcast(&condition);
-    printf("I am thinking: %d\n", t->t_num);
+    printf("Philosophers %d is thinking\n", t->t_num);
     sleep(rand()%5+1);
   }
 
