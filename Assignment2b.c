@@ -9,23 +9,23 @@
 #include <sys/wait.h>
 #include <pthread.h>
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t lock2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t lock3 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t lock4 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock;
+pthread_mutex_t lock2;
 pthread_cond_t condition = PTHREAD_COND_INITIALIZER;
 
 int boxFork;
 
 int test(int, int);
 
+
+
 struct myPhilosophers{
-  pthread_t p_id;
   int p_num;
   int p_state;
   int p_numEats;
   double p_hungryTime;
   int d;
+  pthread_cond_t myCond;
 };
 
 struct threads{
@@ -43,6 +43,7 @@ int main(int argc, char const *argv[]){
 
   int d, i;
   pthread_attr_t attr; 
+  
   srand(time(0));
 
   printf("Enter the d: ");
@@ -53,6 +54,8 @@ int main(int argc, char const *argv[]){
   struct threads **threads = malloc(d*sizeof(*threads));
 
   pthread_attr_init(&attr);
+  pthread_mutex_init(&lock,NULL);
+  pthread_mutex_init(&lock2,NULL);
   
   for(i = 0; i < d; i++){
     threads[i] = malloc(sizeof(struct threads));
@@ -68,6 +71,7 @@ int main(int argc, char const *argv[]){
     myPhilosophers[i]->p_numEats = 0;
     myPhilosophers[i]->p_state = 0;
     myPhilosophers[i]->p_hungryTime = 0;
+    pthread_cond_init(&myPhilosophers[i]->myCond,NULL); 
   }
 
   for(i = 0; i < d; i++){
@@ -79,9 +83,16 @@ int main(int argc, char const *argv[]){
  
   printf("-------------------------\n");
   for(i = 0; i < d; i++){
-    printf("Philosopher %d eat %d times and he stayed %lf seconds hungry\n",
-      myPhilosophers[i]->p_num,myPhilosophers[i]->p_numEats,myPhilosophers[i]->p_hungryTime);
+    printf("Philosopher %d eat %d times and he stayed averagely %.2lf seconds hungry\n",
+      myPhilosophers[i]->p_num,myPhilosophers[i]->p_numEats,myPhilosophers[i]->p_hungryTime / myPhilosophers[i]->p_numEats);
   }
+
+
+  pthread_mutex_destroy(&lock);
+  pthread_mutex_destroy(&lock2);
+
+  pthread_cond_destroy(&condition);
+
   return 0;
 }
 
@@ -89,45 +100,61 @@ int main(int argc, char const *argv[]){
 
 void* runner(void *p){
 
-  clock_t afterHungry, beforeEating;
-  int i = 0;
+  time_t afterHungry, beforeEating;
+  int i = 0,counter,control;
   struct threads *t = (struct threads*) p;
-  for(i = 0; i < 2; i++){
-    myPhilosophers[t->t_num]->p_state = 1;
-    afterHungry = clock();
-    while(1){
 
-        pthread_mutex_lock(&lock);
-      if(test(t->t_num,t->d) && boxFork > 0){
-        
-          boxFork--;
+  myPhilosophers[t->t_num]->p_state = 0;
+    printf("Philosophers %d is thinking\n", t->t_num);
+    sleep(rand()%5+1);
+
+  for(i = 0; i < 2; i++){
+    counter = 1; control = 0;
+    myPhilosophers[t->t_num]->p_state = 1;
+    printf("Philosophers %d is hungry\n", t->t_num);
+    afterHungry = time(NULL);
+
+    while(1){
+      
+      pthread_mutex_lock(&lock);
+      if(test(t->t_num,t->d)){
+      
           if(boxFork == 1){
             printf("Only one fork left at box!\n");
           }
+          boxFork--;
         pthread_mutex_unlock(&lock);
         printf("Philosophers %d is eating\n", t->t_num);
         myPhilosophers[t->t_num]->p_state = 2;
-        beforeEating = clock();
-        myPhilosophers[t->t_num]->p_hungryTime += (double)(beforeEating - afterHungry) / CLOCKS_PER_SEC ;
+        beforeEating = time(NULL);
+        myPhilosophers[t->t_num]->p_hungryTime += (double)(beforeEating - afterHungry);
         sleep(rand()%5+1);
-        
+        myPhilosophers[t->t_num]->p_numEats++;
         pthread_mutex_lock(&lock);
           boxFork++;
         pthread_mutex_unlock(&lock);
-        myPhilosophers[t->t_num]->p_numEats++;
+        
         break;
       }
       else{
         pthread_mutex_unlock(&lock);
         pthread_mutex_lock(&lock2);
-        pthread_cond_wait(&condition,&lock2);
+        pthread_cond_wait(&myPhilosophers[t->t_num]->myCond,&lock2);
         pthread_mutex_unlock(&lock2);
     }
     }
 
     myPhilosophers[t->t_num]->p_state = 0;
-    pthread_cond_broadcast(&condition);
     printf("Philosophers %d is thinking\n", t->t_num);
+    while(t->d/2 + 1 > counter && control != 1){
+      if (test((t->t_num+counter)%t->d,t->d) || test((t->t_num+t->d-counter)%t->d,t->d))
+      {
+        control = 1;
+      }
+      counter ++;
+    }
+    
+    
     sleep(rand()%5+1);
   }
 
@@ -135,8 +162,29 @@ void* runner(void *p){
 
 int test(int p, int d){
 
-  if(myPhilosophers[(p+1)%d]->p_state != 2 && myPhilosophers[(p+d-1)%d]->p_state != 2 && myPhilosophers[p]->p_state == 1)
+  int i = 1;
+  if(myPhilosophers[(p+1)%d]->p_state != 2 && myPhilosophers[(p+d-1)%d]->p_state != 2 && myPhilosophers[p]->p_state == 1 && boxFork > 0){
+    pthread_cond_signal(&myPhilosophers[p]->myCond);
     return 1;
+  }
+  /*while(d/2 > i){
+    if(myPhilosophers[(p+i)%d]->p_state == 1){
+      pthread_cond_signal(&myPhilosophers[(p+i)%d]->myCond);
+      break;
+    }
+    else if(myPhilosophers[(p+d-i)%d]->p_state == 1){
+      pthread_cond_signal(&myPhilosophers[(p+d-i)%d]->myCond);
+      break;
+    }
+    i++;
+  }*/
+  /*for(i = 0; i < d; i++){
+    if(myPhilosophers[i]->p_state == 1){
+      pthread_cond_signal(&myPhilosophers[i]->myCond);
+      break;
+    }
+      
+      
+  }*/
   return 0;
-  
 }

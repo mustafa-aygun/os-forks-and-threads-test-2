@@ -10,13 +10,11 @@
 #include <pthread.h>
 
 int **matrix;
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t lock2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t lock3 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t lock4 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t lock5 = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t condition = PTHREAD_COND_INITIALIZER;
-pthread_cond_t condition1 = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t lock;
+pthread_mutex_t lock2;
+pthread_mutex_t lock3;
+pthread_cond_t condition;
+pthread_cond_t condition1;
 int shiftedLeft = 0;
 int shiftedUp = 0;
 int numThread = 0;
@@ -59,6 +57,13 @@ int main(int argc, char const *argv[]){
   }
   
   pthread_attr_init(&attr);
+  pthread_cond_init(&condition,NULL);
+  pthread_cond_init(&condition1,NULL);
+
+  pthread_mutex_init(&lock,NULL);
+  pthread_mutex_init(&lock2,NULL);
+  pthread_mutex_init(&lock3,NULL);
+
   struct myThread **threads = malloc(sizeof(struct myThread*)*d);
   for(i = 0; i < d; i++){
     threads[i] = malloc(sizeof(struct myThread));
@@ -78,6 +83,14 @@ int main(int argc, char const *argv[]){
  
   printf("-------------------------\n");
   printMatrix(m);
+  
+  pthread_mutex_destroy(&lock);
+  pthread_mutex_destroy(&lock2);
+  pthread_mutex_destroy(&lock3);
+
+  pthread_cond_destroy(&condition);
+  pthread_cond_destroy(&condition1);
+
   return 0;
 }
 
@@ -164,9 +177,9 @@ void* runner(void *p){
           numThread++;
           //printf("4-Hi from %d with shifted %d round %d\n",t->t_num,numThread,j);
           pthread_mutex_unlock(&lock);
-          pthread_mutex_lock(&lock5);
-          pthread_cond_wait(&condition1,&lock5);
-          pthread_mutex_unlock(&lock5);
+          pthread_mutex_lock(&lock2);
+          pthread_cond_wait(&condition,&lock2);
+          pthread_mutex_unlock(&lock2);
         }
         
           
@@ -174,7 +187,7 @@ void* runner(void *p){
           numThread = 0; 
           pthread_mutex_unlock(&lock);}
           //printf("3-Hi from %d with shifted %d round %d\n",t->t_num,numThread,j);
-        pthread_cond_signal(&condition1);   
+        pthread_cond_signal(&condition);   
       
     }
     for(i = 0; i < t->t_work; i++){
@@ -187,7 +200,7 @@ void* runner(void *p){
       //printf("2-Hi from %d with shifted %d round %d\n",t->t_num,numThread,j);
       pthread_mutex_unlock(&lock);
       pthread_mutex_lock(&lock3);
-      pthread_cond_wait(&condition,&lock3);
+      pthread_cond_wait(&condition1,&lock3);
       pthread_mutex_unlock(&lock3);
     }
     else{
@@ -196,7 +209,7 @@ void* runner(void *p){
       pthread_mutex_unlock(&lock);
     }
       
-    pthread_cond_signal(&condition);
+    pthread_cond_signal(&condition1);
     for(i = 0; i < t->t_work; i++){
         shiftUp(t->m,(t->t_prev_work+i));
     }
